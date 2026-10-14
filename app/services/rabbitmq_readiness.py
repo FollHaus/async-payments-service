@@ -209,8 +209,7 @@ async def wait_for_topology(
     while loop.time() < deadline:
         try:
             queues, bindings, policies = await asyncio.gather(
-                load_queues(client), load_bindings(client), load_policies(client)
-            )
+                load_queues(client), load_bindings(client), load_policies(client))
             if topology_ready(queues, bindings, policies):
                 return True
         except (httpx.ConnectError, httpx.TimeoutException):
