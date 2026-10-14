@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Класс настроек для проекта"""
     api_key: str = Field(min_length=1, description="API ключ")
     database_url: str = Field(min_length=1, description="Ссылка на подключение к базе")
     rabbitmq_url: str = Field(min_length=1, description="Ссылка на подключение к rabbitmq")

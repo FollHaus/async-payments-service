@@ -1,3 +1,10 @@
+"""Модуль проверки готовности топологии RabbitMQ.
+
+Предоставляет функции для валидации очередей, биндингов и политик
+RabbitMQ через Management API, а также асинхронную процедуру
+ожидания полной готовности инфраструктуры.
+"""
+
 import asyncio
 import json
 import subprocess
@@ -87,9 +94,9 @@ def policies_ready(policies: list[dict[str, object]]) -> bool:
 
 
 def topology_ready(
-        queues: list[dict[str, str]],
-        bindings: list[dict[str, str]],
-        policies: list[dict[str, str]],
+    queues: list[dict[str, str]],
+    bindings: list[dict[str, str]],
+    policies: list[dict[str, str]],
 ) -> bool:
     """Проверяет полную топологию RabbitMQ.
 
@@ -107,41 +114,103 @@ def topology_ready(
 
 
 async def load_queues(
-        client: httpx.AsyncClient,
+    client: httpx.AsyncClient,
 ) -> list[dict[str, Any]]:
+    """Загрузить список очередей из RabbitMQ Management API.
+
+    Выполняет GET-запрос к ``/api/queues/payments`` и возвращает
+    распарсенный JSON-ответ.
+
+    Args:
+        client: Асинхронный HTTP-клиент ``httpx.AsyncClient``
+            с настроенным ``base_url`` и авторизацией.
+
+    Returns:
+        Список очередей в формате, возвращаемом Management API.
+
+    Raises:
+        httpx.HTTPStatusError: Если ответ содержит код ошибки
+            (например, 401, 404, 500).
+    """
     response = await client.get("/api/queues/payments")
     response.raise_for_status()
     return response.json()
 
 
 async def load_bindings(
-        client: httpx.AsyncClient,
+    client: httpx.AsyncClient,
 ) -> list[dict[str, Any]]:
+    """Загрузить список б��ндингов из RabbitMQ Management API.
+
+    Выполняет GET-запрос к ``/api/bindings/payments`` и возвращает
+    распарсенный JSON-ответ.
+
+    Args:
+        client: Асинхронный HTTP-клиент ``httpx.AsyncClient``
+            с настроенным ``base_url`` и авторизацией.
+
+    Returns:
+        Список биндингов в формате, возвращаемом Management API.
+
+    Raises:
+        httpx.HTTPStatusError: Если ответ содержит код ошибки.
+    """
     response = await client.get("/api/bindings/payments")
     response.raise_for_status()
     return response.json()
 
 
 async def load_policies(
-        client: httpx.AsyncClient,
+    client: httpx.AsyncClient,
 ) -> list[dict[str, Any]]:
+    """Загрузить список политик из RabbitMQ Management API.
+
+    Выполняет GET-запрос к ``/api/policies/payments`` и возвращает
+    распарсенный JSON-ответ.
+
+    Args:
+        client: Асинхронный HTTP-клиент ``httpx.AsyncClient``
+            с настроенным ``base_url`` и авторизацией.
+
+    Returns:
+        Список политик в формате, возвращаемом Management API.
+
+    Raises:
+        httpx.HTTPStatusError: Если ответ содержит код ошибки.
+    """
     response = await client.get("/api/policies/payments")
     response.raise_for_status()
     return response.json()
 
 
 async def wait_for_topology(
-        client: httpx.AsyncClient,
-        timeout: float = 60.0,
+    client: httpx.AsyncClient,
+    timeout: float = 60.0,
 ) -> bool:
+    """Ожидать полной готовности топологии RabbitMQ с повторными попытками.
+
+    Периодически запрашивает состояние очередей, биндингов и политик
+    через Management API до тех пор, пока ``topology_ready`` не вернёт
+    ``True``, либо пока не истечёт ``timeout``.
+
+    Args:
+        client: Асинхронный HTTP-клиент ``httpx.AsyncClient``
+            с настроенным ``base_url`` и авторизацией.
+        timeout: Максимальное время ожидания в секундах
+            (по умолчанию 60 секунд).
+
+    Returns:
+        ``True``, если топология стала готова в течение таймаута.
+        ``False``, если время ожидания истекло.
+    """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
 
     while loop.time() < deadline:
         try:
-            queues = await load_queues(client)
-            bindings = await load_bindings(client)
-            policies = await load_policies(client)
+            queues, bindings, policies = await asyncio.gather(
+                load_queues(client), load_bindings(client), load_policies(client)
+            )
             if topology_ready(queues, bindings, policies):
                 return True
         except (httpx.ConnectError, httpx.TimeoutException):
@@ -153,6 +222,18 @@ async def wait_for_topology(
 
 
 async def main() -> int:
+    """Точка входа для standalone-проверки готовности RabbitMQ.
+
+    Извлекает учётные данные из ``settings.rabbitmq_url``,
+    формирует ``httpx.AsyncClient`` для Management API и запускает
+    ``wait_for_topology``.
+
+    Returns:
+        Код выхода: ``0`` при успешной проверке, ``1`` при неудаче.
+
+    Raises:
+        ValueError: Если ``RABBITMQ_URL`` не содержит логин и пароль.
+    """
     broker_url = urlsplit(settings.rabbitmq_url)
 
     if broker_url.username is None or broker_url.password is None:
