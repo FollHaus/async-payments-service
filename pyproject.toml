@@ -1,0 +1,20 @@
+[project]
+name = "async-payments-service"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
+    "fastapi>=0.142.4",
+    "faststream[cli,rabbit]>=0.7.7",
+    "httpx>=0.28.1",
+    "pydantic>=2,<3",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.0,<2.1",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[tool.uv]
+required-environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]

@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: local-dev-password
+      POSTGRES_USER: payments
+      POSTGRES_DB: payments
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "payments", "-d", "payments" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s # даёт время на старт
+
+  migrate:
+    build: .
+    image: async-payments-service:dev
+    command: [ "alembic", "upgrade", "head" ]
+    env_file:
+      - .env.docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  consumer:
+    build: .
+    image: async-payments-service:dev
+    command: [ "faststream", "run", "app.workers.consumer:app" ]
+    env_file:
+      - .env.docker
+    depends_on:
+      rabbitmq-ready:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+  outbox:
+    build: .
+    image: async-payments-service:dev
+    command: [ "python", "-u", "-m", "app.workers.outbox" ]
+    env_file:
+      - .env.docker
+    depends_on:
+      rabbitmq-ready:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+  api:
+    build: .
+    image: async-payments-service:dev
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env.docker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  rabbitmq-ready:
+    build: .
+    image: async-payments-service:dev
+    command: [ "python", "-u", "-m", "app.services.rabbitmq_readiness" ]
+    env_file:
+      - .env.docker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+      RABBITMQ_DEFAULT_VHOST: payments
+      RABBITMQ_PID_FILE: /tmp/rabbitmq.pid
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    post_start:
+      - command: [ "rabbitmqctl", "wait", "--timeout", "60", "/tmp/rabbitmq.pid" ]
+        user: rabbitmq
+      - command: [ "rabbitmqctl", "import_definitions", "/etc/rabbitmq/definitions.json" ]
+        user: rabbitmq
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "check_running" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s # даёт время на старт
+volumes:
+  postgres_data:
+  rabbitmq_data:

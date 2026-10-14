@@ -1,0 +1,60 @@
+{
+    "exchanges": [
+        {
+            "arguments": {
+            },
+            "auto_delete": false,
+            "durable": true,
+            "name": "payments.dlx",
+            "type": "direct",
+            "vhost": "payments"
+        }
+    ],
+    "policies": [
+        {
+            "apply-to": "queues",
+            "definition": {
+                "dead-letter-exchange": "payments.dlx",
+                "dead-letter-routing-key": "payments.dlq"
+            },
+            "name": "payments-dlq",
+            "pattern": "^payments\\.new$",
+            "priority": 1,
+            "vhost": "payments"
+        }
+    ],
+    "queues": [
+        {
+            "arguments": {
+                "x-queue-type": "classic"
+            },
+            "auto_delete": false,
+            "durable": true,
+            "name": "payments.dlq",
+            "type": "classic",
+            "vhost": "payments"
+        },
+        {
+            "arguments": {
+                "x-queue-type": "classic"
+            },
+            "auto_delete": false,
+            "durable": true,
+            "name": "payments.new",
+            "type": "classic",
+            "vhost": "payments"
+        }
+    ],
+    "bindings": [
+        {
+            "arguments": {
+            },
+            "destination": "payments.dlq",
+            "destination_type": "queue",
+            "routing_key": "payments.dlq",
+            "source": "payments.dlx",
+            "vhost": "payments"
+        }
+    ],
+    "vhosts": [{"name": "payments"}]
+}
